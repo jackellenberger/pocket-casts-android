@@ -9,6 +9,7 @@ import androidx.core.content.edit
 import androidx.work.NetworkType
 import au.com.shiftyjelly.pocketcasts.models.to.AutoArchiveAfterPlaying
 import au.com.shiftyjelly.pocketcasts.models.to.AutoArchiveInactive
+import au.com.shiftyjelly.pocketcasts.models.to.ChapterBlocklist
 import au.com.shiftyjelly.pocketcasts.models.to.PlaybackEffects
 import au.com.shiftyjelly.pocketcasts.models.to.PodcastGrouping
 import au.com.shiftyjelly.pocketcasts.models.to.RefreshState
@@ -69,6 +70,9 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -1640,4 +1644,23 @@ class SettingsImpl @Inject constructor(
         defaultValue = true,
         sharedPrefs = sharedPreferences,
     )
+
+    override fun getChapterBlocklist(): Flow<Set<String>> {
+        return flowOf(getChapterBlocklistFromPreferences())
+    }
+
+    private fun getChapterBlocklistFromPreferences(): Set<String> {
+        return sharedPreferences.getStringSet("chapter_blocklist", emptySet()) ?: emptySet()
+    }
+
+    override suspend fun setChapterBlocklist(blocklist: Set<String>) {
+        with(sharedPreferences.edit()) {
+            if (blocklist.isEmpty()) {
+                remove("chapter_blocklist")
+            } else {
+                putStringSet("chapter_blocklist", blocklist)
+            }
+            apply()
+        }
+    }
 }

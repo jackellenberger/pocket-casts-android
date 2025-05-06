@@ -583,4 +583,15 @@ interface Settings {
     val isFreeAccountFiltersBannerDismissed: UserSetting<Boolean>
     val isFreeAccountHistoryBannerDismissed: UserSetting<Boolean>
     val showFreeAccountEncouragement: UserSetting<Boolean>
+
+    /**
+     * Retrieves the set of blocked chapter terms as a Flow.
+     * Emits an empty set if no blocklist is set.
+     */
+    fun getChapterBlocklist(): Flow<Set<String>>
+
+    /**
+     * Persists the given set of blocked chapter terms.
+     */
+    suspend fun setChapterBlocklist(blocklist: Set<String>)
 }

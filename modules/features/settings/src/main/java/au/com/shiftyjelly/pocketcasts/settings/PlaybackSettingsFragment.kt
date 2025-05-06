@@ -102,6 +102,11 @@ class PlaybackSettingsFragment : BaseFragment() {
                     @Suppress("DEPRECATION")
                     activity?.onBackPressed()
                 },
+                onNavigateToChapterBlocklist = {
+                    findNavController().navigate(
+                     PlaybackSettingsFragmentDirections.actionPlaybackSettingsFragmentToChapterBlocklistFragment()
+                    )
+                }
                 scrollToSleepTimer = scrollToSleepTimer,
                 bottomInset = bottomInset.value.pxToDp(LocalContext.current).dp,
             )
@@ -112,6 +117,7 @@ class PlaybackSettingsFragment : BaseFragment() {
     private fun PlaybackSettings(
         settings: Settings,
         onBackClick: () -> Unit,
+        onNavigateToChapterBlocklist: () -> Unit,
         scrollToSleepTimer: Boolean,
         bottomInset: Dp,
     ) {
@@ -392,6 +398,20 @@ class PlaybackSettingsFragment : BaseFragment() {
                                     )
                                     settings.shakeToResetSleepTimer.set(it, updateModifiedAt = true)
                                 },
+                            )
+                        }
+
+                        SettingsItems.SETTINGS_CHAPTER_BLOCKLIST -> {
+                            // Add some space before this new item if desired
+                            Spacer(modifier = Modifier.height(SettingsSection.verticalPadding / 2)) 
+                            SettingRow(
+                                primaryText = stringResource(LR.string.chapter_blocklist_title), // Use the same title string
+                                secondaryText = stringResource(LR.string.settings_chapter_blocklist_summary), // Create this new summary string resource
+                                modifier = Modifier.clickable {
+                                    onNavigateToChapterBlocklist() // Call the lambda
+                                    analyticsTracker.track(AnalyticsEvent.SETTINGS_NAVIGATE_TO_CHAPTER_BLOCKLIST)
+                                },
+                                indent = false // Keep consistent indentation
                             )
                         }
                     }
@@ -743,4 +763,5 @@ private enum class SettingsItems {
     SETTINGS_HEADER_SLEEP_TIMER,
     SETTINGS_SLEEP_TIMER_RESTART,
     SETTINGS_SLEEP_TIMER_SHAKE,
+    SETTINGS_CHAPTER_BLOCKLIST,
 }

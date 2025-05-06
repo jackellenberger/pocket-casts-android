@@ -99,6 +99,9 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.reactive.asFlow
 import kotlinx.coroutines.rx2.asFlow
@@ -226,12 +229,22 @@ open class PlaybackManager @Inject constructor(
     val mediaSession: MediaSessionCompat
         get() = mediaSessionManager.mediaSession
 
+    private val _chapterBlocklist = MutableStateFlow<Set<String>>(emptySet())
+    private val chapterBlocklist: StateFlow<Set<String>> = _chapterBlocklist.asStateFlow()
+
     @SuppressLint("CheckResult")
     fun setup() {
         // load an initial playback state
         upNextQueue.setupBlocking()
         mediaSessionManager.startObserving()
         val playbackManagerNetworkWatcher = playbackManagerNetworkWatcherFactory.create(::onSwitchedToMeteredConnection)
+
+        applicationScope.launch { // Use the injected applicationScope
+             settings.getChapterBlocklist().collectLatest { blocklist ->
+                 LogBuffer.d(LogBuffer.TAG_PLAYBACK, "Chapter blocklist updated: $blocklist")
+                 _chapterBlocklist.value = blocklist
+             }
+        }
 
         launch {
             updatePausedPlaybackState()
@@ -1582,13 +1595,93 @@ open class PlaybackManager @Inject constructor(
         observeChaptersSkipping?.cancel()
         observeChaptersSkipping = playbackStateRelay.asFlow()
             .map { it.positionMs.milliseconds }
+            .distinctUntilChanged()
             .onEach { position ->
                 val currentChapter = chapters.firstOrNull { position in it }
-                if (currentChapter?.selected == false) {
-                    skipToNextSelectedOrLastChapter()
+
+                val isBlocked = currentChapter?.let { shouldSkipChapter(it) } ?: false // Check blocklist
+                val isNotSelected = currentChapter?.selected == false
+
+                if (currentChapter != null && (isBlocked || isNotSelected)) {
+                     LogBuffer.i(LogBuffer.TAG_PLAYBACK,"Chapter needs skipping - Title: ${currentChapter.title}, Blocked: $isBlocked, Selected: ${currentChapter.selected}")
+                     // Call the unified skip function
+                     skipToNextNonBlockedAndSelectedChapter(chapters, currentChapter)
                 }
             }
-            .launchIn(this)
+        .launchIn(this)
+    }
+
+    private fun skipToNextNonBlockedAndSelectedChapter(chapters: Chapters, currentChapter: Chapter?) {
+        // If the current chapter is null, we can't determine the starting point for skipping.
+        if (currentChapter == null) {
+             LogBuffer.w(LogBuffer.TAG_PLAYBACK, "Cannot skip from a null chapter.")
+            return
+        }
+
+        val currentIndex = chapters.indexOf(currentChapter)
+        if (currentIndex == -1) {
+            LogBuffer.e(LogBuffer.TAG_PLAYBACK, "Could not find current chapter index for skipping.")
+            return // Should not happen if chapter is from the list
+        }
+
+        LogBuffer.i(LogBuffer.TAG_PLAYBACK, "Attempting to skip chapter: ${currentChapter.title} (Blocked or Not Selected)")
+
+        // Iterate through subsequent chapters to find the next valid one
+         for (i in (currentIndex + 1)..chapters.lastIndex) {
+             val subsequentChapter = chapters[i]
+             // *** STEP 4: Integrate shouldSkipChapter Call ***
+             val isBlocked = shouldSkipChapter(subsequentChapter)
+             val isSelected = subsequentChapter.selected
+
+             if (isSelected && !isBlocked) {
+                 // Found the next valid chapter to play
+                 LogBuffer.i(LogBuffer.TAG_PLAYBACK, "Skipping to next valid chapter: ${subsequentChapter.title}")
+                 launch { // Launch coroutine for suspend function call
+                     seekToTimeMsInternal(subsequentChapter.startTime)
+                     trackPlayback(AnalyticsEvent.PLAYBACK_CHAPTER_SKIPPED, SourceView.AUTO_PLAY) // Track skip
+                 }
+                 return // Exit after seeking
+             } else {
+                  LogBuffer.d(LogBuffer.TAG_PLAYBACK, "Also skipping chapter: ${subsequentChapter.title} (Blocked: $isBlocked, Selected: $isSelected)")
+             }
+         }
+
+        // If no subsequent valid chapter was found
+        LogBuffer.i(LogBuffer.TAG_PLAYBACK, "No subsequent non-blocked and selected chapter found. Skipping to end of episode.")
+        // Consider calling onCompletion or seeking to the end of the episode
+        launch { // Launch coroutine for suspend function call
+             val episodeUuid = playbackStateRelay.blockingFirst().episodeUuid
+             if(episodeUuid != null) {
+                onCompletion(episodeUuid) // Trigger episode completion logic
+             } else {
+                 LogBuffer.e(LogBuffer.TAG_PLAYBACK, "Cannot skip to end, episode UUID is null in playback state.")
+                 stop() // Fallback to stopping playback
+             }
+        }
+    }
+
+    private fun shouldSkipChapter(chapter: Chapter): Boolean {
+        // Retrieve the current blocklist from the StateFlow
+        // Assumes 'chapterBlocklist' is a StateFlow<Set<String>> in the class scope
+        val blocklist = chapterBlocklist.value 
+
+        // If the blocklist is empty, no need to check further
+        if (blocklist.isEmpty()) {
+            return false
+        }
+
+        // Get the chapter title, return false if it's null or blank
+        val chapterTitle = chapter.title?.trim()
+        if (chapterTitle.isNullOrBlank()) {
+            return false
+        }
+
+        // Check if any term in the blocklist is contained within the chapter title (case-insensitive)
+        return blocklist.any { blockedTerm ->
+            // Ensure the blocked term is not blank before checking
+            val trimmedBlockedTerm = blockedTerm.trim()
+            trimmedBlockedTerm.isNotBlank() && chapterTitle.contains(trimmedBlockedTerm, ignoreCase = true)
+        }
     }
 
     override fun onFocusGain(shouldResume: Boolean) {

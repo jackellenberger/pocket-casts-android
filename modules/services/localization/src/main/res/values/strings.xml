@@ -1653,6 +1653,9 @@
     <string name="upgrade_to_plus">Upgrade to Plus</string>
     <!-- Button title to upgrade to Patron. Don't translate "Patron" -->
     <string name="upgrade_to_patron">Upgrade to Patron</string>
+    <string name="settings_chapter_blocklist_summary">Manage terms to automatically skip chapters</string>
+    <!-- Re-use the title from the ChapterBlocklistFragment -->
+    <string name="chapter_blocklist_title">Chapter Blocklist</string>
 
     <!-- Errors -->
 
