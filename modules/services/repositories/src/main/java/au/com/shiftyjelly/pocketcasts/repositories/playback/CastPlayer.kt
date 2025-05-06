@@ -25,6 +25,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONException
 import org.json.JSONObject
 import timber.log.Timber
+import androidx.media3.common.Player as ExoPlayer
 
 class CastPlayer(val context: Context, override val onPlayerEvent: (Player, PlayerEvent) -> Unit) : Player {
 
@@ -374,6 +375,10 @@ class CastPlayer(val context: Context, override val onPlayerEvent: (Player, Play
         }
     }
 
+    // Note: Cast SDK doesn't directly expose a position discontinuity event like ExoPlayer.
+    // We might need to rely on status updates and comparing positions, or accept that
+    // CastPlayer won't have the same level of precision for this event.
+    // For now, we won't emit PositionDiscontinuity from CastPlayer, but keep the structure.
     private inner class RemoteMediaClientListener : RemoteMediaClient.Callback() {
         override fun onMetadataUpdated() {
             Timber.d("Remote meta data updated")
@@ -384,7 +389,17 @@ class CastPlayer(val context: Context, override val onPlayerEvent: (Player, Play
         }
 
         override fun onStatusUpdated() {
+            val oldPosition = remoteMediaClient?.approximateStreamPosition ?: 0L
             updatePlaybackState()
+            val newPosition = remoteMediaClient?.approximateStreamPosition ?: 0L
+
+            // Crude check for seek-like changes. Cast SDK lacks specific discontinuity reasons.
+            // A more robust solution might involve tracking seek requests.
+            if (kotlin.math.abs(newPosition - oldPosition) > 1000) { // Arbitrary threshold for seek detection
+                 onPlayerEvent(this@CastPlayer, PlayerEvent.PositionDiscontinuity(newPosition, ExoPlayer.DISCONTINUITY_REASON_SEEK))
+                 // Also call SeekComplete for potential compatibility, though it might be redundant.
+                 onPlayerEvent(this@CastPlayer, PlayerEvent.SeekComplete(newPosition.toInt()))
+            }
         }
 
         override fun onSendingRemoteMediaRequest() {}

@@ -136,7 +136,6 @@ class SimplePlayer(
             Toast.makeText(context, "Unable to seek. File headers appear to be invalid.", Toast.LENGTH_SHORT).show()
         } else {
             player?.seekTo(positionMs.toLong())
-            super.onSeekComplete(positionMs)
         }
     }
 
@@ -263,9 +262,25 @@ class SimplePlayer(
                 this@SimplePlayer.onError(event)
             }
 
-            override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
-                 onPlayerEvent(this@SimplePlayer, PlayerEvent.PositionDiscontinuity(newPosition.positionMs.toInt(), reason))
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int
+            ) {
+                 // Emit the new PlayerEvent for position discontinuity
+                 onPlayerEvent(this@SimplePlayer, PlayerEvent.PositionDiscontinuity(newPosition.positionMs, reason))
+                 // Also call the existing SeekComplete handler if the reason was a seek operation,
+                 // to maintain compatibility with parts of the code that might rely on it (like CastPlayer sync).
+                 // Consider refactoring SeekComplete away later if possible.
+                 if (reason == Player.DISCONTINUITY_REASON_SEEK || reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT) {
+                     super@SimplePlayer.onSeekComplete(newPosition.positionMs.toInt())
+                 }
             }
+
+            // Add onSeekProcessed if needed, though PositionDiscontinuity often covers seeks.
+            // override fun onSeekProcessed() {
+            //     player?.currentPosition?.toInt()?.let { super@SimplePlayer.onSeekComplete(it) }
+            // }
         })
 
         addVideoListener(player)

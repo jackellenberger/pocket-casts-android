@@ -1589,9 +1589,17 @@ open class PlaybackManager @Inject constructor(
     private var observeChaptersSkipping: Job? = null
 
     private fun onChaptersAvailable(chapters: Chapters) {
+        // *** UPDATED: Only update the state, remove skipping logic ***
         playbackStateRelay.blockingFirst().let { playbackState ->
-            playbackStateRelay.accept(playbackState.copy(chapters = chapters))
+            // Check if chapters actually changed to avoid unnecessary updates
+            if (playbackState.chapters != chapters) {
+                 playbackStateRelay.accept(playbackState.copy(chapters = chapters, lastChangeFrom = LastChangeFrom.OnChapterIndicesUpdated.value))
+                 LogBuffer.d(LogBuffer.TAG_PLAYBACK, \"Chapters updated in playback state.\")
+            }
         }
+         // REMOVED: observeChaptersSkipping logic is now handled by PositionDiscontinuity
+         // observeChaptersSkipping?.cancel()
+         // observeChaptersSkipping = launch { ... }
     }
 
     private fun skipToNextNonBlockedAndSelectedChapter(chapters: Chapters, currentChapter: Chapter?) {
@@ -2224,17 +2232,22 @@ open class PlaybackManager @Inject constructor(
                 is PlayerEvent.CachingComplete -> onCachingComplete(event.episodeUuid)
                 is PlayerEvent.CachingReset -> onCachingReset(event.episodeUuid)
                 is PlayerEvent.PositionDiscontinuity -> {
+                    // *** NEW: Handle position discontinuity and chapter skipping ***
                     val chapters = playbackStateRelay.blockingFirst().chapters
                     // Use event.newPositionMs which comes directly from the player event
                     val currentChapter = chapters.firstOrNull { event.newPositionMs.milliseconds in it }
 
                     val isBlocked = currentChapter?.let { shouldSkipChapter(it) } ?: false
-                    val isNotSelected = currentChapter?.selected == false
+                    val isNotSelected = currentChapter?.selected == false // Assuming 'selected' indicates if a chapter should be played
 
                     if (currentChapter != null && (isBlocked || isNotSelected)) {
                         LogBuffer.i(LogBuffer.TAG_PLAYBACK,"Chapter needs skipping (discontinuity) - Title: ${currentChapter.title}, Blocked: $isBlocked, Selected: ${currentChapter.selected}")
                         // Call the unified skip function
                         skipToNextNonBlockedAndSelectedChapter(chapters, currentChapter)
+                    }
+                     // Handle seek completion here as well if necessary, potentially replacing the specific SeekComplete event
+                    if (event.reason == androidx.media3.common.Player.DISCONTINUITY_REASON_SEEK || event.reason == androidx.media3.common.Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT) {
+                        onSeekComplete(event.newPositionMs.toInt()) // Notify parts potentially relying on SeekComplete
                     }
                 }
             }
@@ -2604,5 +2617,6 @@ open class PlaybackManager @Inject constructor(
         OnUpdatePausedPlaybackState("updatePausedPlaybackState"),
         OnUpdateSleepTimerStatus("updateSleepTimerStatus"),
         OnUserSeeking("onUserSeeking"),
+        OnPositionDiscontinuity(\"onPositionDiscontinuity\"), // Optional: Add if needed for debugging state changes
     }
 }
