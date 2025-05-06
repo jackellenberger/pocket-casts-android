@@ -103,10 +103,13 @@ class PlaybackSettingsFragment : BaseFragment() {
                     activity?.onBackPressed()
                 },
                 onNavigateToChapterBlocklist = {
-                    findNavController().navigate(
-                     PlaybackSettingsFragmentDirections.actionPlaybackSettingsFragmentToChapterBlocklistFragment()
+                    // Use the FragmentHostListener (implemented by MainActivity) to add the new fragment
+                    (activity as? FragmentHostListener)?.addFragment(
+                        ChapterBlocklistFragment(), // Use the existing fragment
+                        onTop = true // Add the new fragment on top of the current one
                     )
-                }
+                    analyticsTracker.track(AnalyticsEvent.SETTINGS_NAVIGATE_TO_CHAPTER_BLOCKLIST)
+                },
                 scrollToSleepTimer = scrollToSleepTimer,
                 bottomInset = bottomInset.value.pxToDp(LocalContext.current).dp,
             )

@@ -262,6 +262,10 @@ class SimplePlayer(
                 val event = PlayerEvent.PlayerError(error.message ?: "", error)
                 this@SimplePlayer.onError(event)
             }
+
+            override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+                 onPlayerEvent(this@SimplePlayer, PlayerEvent.PositionDiscontinuity(newPosition.positionMs.toInt(), reason))
+            }
         })
 
         addVideoListener(player)

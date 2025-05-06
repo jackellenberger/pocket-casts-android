@@ -1592,23 +1592,6 @@ open class PlaybackManager @Inject constructor(
         playbackStateRelay.blockingFirst().let { playbackState ->
             playbackStateRelay.accept(playbackState.copy(chapters = chapters))
         }
-        observeChaptersSkipping?.cancel()
-        observeChaptersSkipping = playbackStateRelay.asFlow()
-            .map { it.positionMs.milliseconds }
-            .distinctUntilChanged()
-            .onEach { position ->
-                val currentChapter = chapters.firstOrNull { position in it }
-
-                val isBlocked = currentChapter?.let { shouldSkipChapter(it) } ?: false // Check blocklist
-                val isNotSelected = currentChapter?.selected == false
-
-                if (currentChapter != null && (isBlocked || isNotSelected)) {
-                     LogBuffer.i(LogBuffer.TAG_PLAYBACK,"Chapter needs skipping - Title: ${currentChapter.title}, Blocked: $isBlocked, Selected: ${currentChapter.selected}")
-                     // Call the unified skip function
-                     skipToNextNonBlockedAndSelectedChapter(chapters, currentChapter)
-                }
-            }
-        .launchIn(this)
     }
 
     private fun skipToNextNonBlockedAndSelectedChapter(chapters: Chapters, currentChapter: Chapter?) {
@@ -2240,6 +2223,20 @@ open class PlaybackManager @Inject constructor(
                 is PlayerEvent.EpisodeChanged -> onEpisodeChanged(event.episodeUuid)
                 is PlayerEvent.CachingComplete -> onCachingComplete(event.episodeUuid)
                 is PlayerEvent.CachingReset -> onCachingReset(event.episodeUuid)
+                is PlayerEvent.PositionDiscontinuity -> {
+                    val chapters = playbackStateRelay.blockingFirst().chapters
+                    // Use event.newPositionMs which comes directly from the player event
+                    val currentChapter = chapters.firstOrNull { event.newPositionMs.milliseconds in it }
+
+                    val isBlocked = currentChapter?.let { shouldSkipChapter(it) } ?: false
+                    val isNotSelected = currentChapter?.selected == false
+
+                    if (currentChapter != null && (isBlocked || isNotSelected)) {
+                        LogBuffer.i(LogBuffer.TAG_PLAYBACK,"Chapter needs skipping (discontinuity) - Title: ${currentChapter.title}, Blocked: $isBlocked, Selected: ${currentChapter.selected}")
+                        // Call the unified skip function
+                        skipToNextNonBlockedAndSelectedChapter(chapters, currentChapter)
+                    }
+                }
             }
         }
     }
