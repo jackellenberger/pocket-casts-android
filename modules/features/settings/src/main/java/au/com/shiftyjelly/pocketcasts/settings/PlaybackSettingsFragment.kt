@@ -108,7 +108,6 @@ class PlaybackSettingsFragment : BaseFragment() {
                         ChapterBlocklistFragment(), // Use the existing fragment
                         onTop = true // Add the new fragment on top of the current one
                     )
-                    analyticsTracker.track(AnalyticsEvent.SETTINGS_NAVIGATE_TO_CHAPTER_BLOCKLIST)
                 },
                 scrollToSleepTimer = scrollToSleepTimer,
                 bottomInset = bottomInset.value.pxToDp(LocalContext.current).dp,
@@ -412,7 +411,6 @@ class PlaybackSettingsFragment : BaseFragment() {
                                 secondaryText = stringResource(LR.string.settings_chapter_blocklist_summary), // Create this new summary string resource
                                 modifier = Modifier.clickable {
                                     onNavigateToChapterBlocklist() // Call the lambda
-                                    analyticsTracker.track(AnalyticsEvent.SETTINGS_NAVIGATE_TO_CHAPTER_BLOCKLIST)
                                 },
                                 indent = false // Keep consistent indentation
                             )

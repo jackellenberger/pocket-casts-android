@@ -5,6 +5,9 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.media.MediaPlayer
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import android.net.Uri
 import android.support.v4.media.session.MediaSessionCompat
 import android.widget.Toast
@@ -101,6 +104,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.reactive.asFlow
@@ -241,7 +245,7 @@ open class PlaybackManager @Inject constructor(
 
         applicationScope.launch { // Use the injected applicationScope
              settings.getChapterBlocklist().collectLatest { blocklist ->
-                 LogBuffer.d(LogBuffer.TAG_PLAYBACK, "Chapter blocklist updated: $blocklist")
+                 LogBuffer.i(LogBuffer.TAG_PLAYBACK, "Chapter blocklist updated: $blocklist")
                  _chapterBlocklist.value = blocklist
              }
         }
@@ -1594,7 +1598,7 @@ open class PlaybackManager @Inject constructor(
             // Check if chapters actually changed to avoid unnecessary updates
             if (playbackState.chapters != chapters) {
                  playbackStateRelay.accept(playbackState.copy(chapters = chapters, lastChangeFrom = LastChangeFrom.OnChapterIndicesUpdated.value))
-                 LogBuffer.d(LogBuffer.TAG_PLAYBACK, \"Chapters updated in playback state.\")
+                 LogBuffer.i(LogBuffer.TAG_PLAYBACK, "Chapters updated in playback state.")
             }
         }
          // REMOVED: observeChaptersSkipping logic is now handled by PositionDiscontinuity
@@ -1603,51 +1607,55 @@ open class PlaybackManager @Inject constructor(
     }
 
     private fun skipToNextNonBlockedAndSelectedChapter(chapters: Chapters, currentChapter: Chapter?) {
-        // If the current chapter is null, we can't determine the starting point for skipping.
         if (currentChapter == null) {
-             LogBuffer.w(LogBuffer.TAG_PLAYBACK, "Cannot skip from a null chapter.")
+            LogBuffer.w(LogBuffer.TAG_PLAYBACK, "Cannot skip from a null chapter.")
             return
         }
 
         val currentIndex = chapters.indexOf(currentChapter)
+        // The current chapter should always be present in the provided list.
+        // If not, it indicates a potential data inconsistency.
         if (currentIndex == -1) {
-            LogBuffer.e(LogBuffer.TAG_PLAYBACK, "Could not find current chapter index for skipping.")
-            return // Should not happen if chapter is from the list
+            LogBuffer.e(LogBuffer.TAG_PLAYBACK, "Current chapter not found in the provided list for skipping. Current chapter title: ${currentChapter.title}")
+            // Depending on the severity, you might consider logging a more severe error or throwing an exception here.
+            return
         }
 
         LogBuffer.i(LogBuffer.TAG_PLAYBACK, "Attempting to skip chapter: ${currentChapter.title} (Blocked or Not Selected)")
 
-        // Iterate through subsequent chapters to find the next valid one
-         for (i in (currentIndex + 1)..chapters.lastIndex) {
-             val subsequentChapter = chapters[i]
-             // *** STEP 4: Integrate shouldSkipChapter Call ***
-             val isBlocked = shouldSkipChapter(subsequentChapter)
-             val isSelected = subsequentChapter.selected
+        // Find the next valid chapter using Kotlin's collection functions
+        val nextValidChapter = findNextValidChapter(chapters, currentIndex)
 
-             if (isSelected && !isBlocked) {
-                 // Found the next valid chapter to play
-                 LogBuffer.i(LogBuffer.TAG_PLAYBACK, "Skipping to next valid chapter: ${subsequentChapter.title}")
-                 launch { // Launch coroutine for suspend function call
-                     seekToTimeMsInternal(subsequentChapter.startTime)
-                     trackPlayback(AnalyticsEvent.PLAYBACK_CHAPTER_SKIPPED, SourceView.AUTO_PLAY) // Track skip
-                 }
-                 return // Exit after seeking
-             } else {
-                  LogBuffer.d(LogBuffer.TAG_PLAYBACK, "Also skipping chapter: ${subsequentChapter.title} (Blocked: $isBlocked, Selected: $isSelected)")
-             }
-         }
+        if (nextValidChapter != null) {
+            LogBuffer.i(LogBuffer.TAG_PLAYBACK, "Skipping to next valid chapter: ${nextValidChapter.title}")
+            launch { // Launch coroutine for suspend function calls
+                seekToTimeMsInternal(nextValidChapter.startTime)
+                trackPlayback(AnalyticsEvent.PLAYBACK_CHAPTER_SKIPPED, SourceView.AUTO_PLAY) // Track skip
+            }
+        } else {
+            LogBuffer.i(LogBuffer.TAG_PLAYBACK, "No subsequent non-blocked and selected chapter found after ${currentChapter.title}. Skipping to end of episode.")
+            skipToEndOfLastChapter() // Extracted end-of-episode logic
+        }
+    }
 
-        // If no subsequent valid chapter was found
-        LogBuffer.i(LogBuffer.TAG_PLAYBACK, "No subsequent non-blocked and selected chapter found. Skipping to end of episode.")
-        // Consider calling onCompletion or seeking to the end of the episode
-        launch { // Launch coroutine for suspend function call
-             val episodeUuid = playbackStateRelay.blockingFirst().episodeUuid
-             if(episodeUuid != null) {
-                onCompletion(episodeUuid) // Trigger episode completion logic
-             } else {
-                 LogBuffer.e(LogBuffer.TAG_PLAYBACK, "Cannot skip to end, episode UUID is null in playback state.")
-                 stop() // Fallback to stopping playback
-             }
+    /**
+     * Finds the next chapter in the list starting from the given index (exclusive)
+     * that is selected and not blocked.
+     */
+    private fun findNextValidChapter(chapters: Chapters, startIndex: Int): Chapter? {
+        // Drop chapters up to and including the current one, then find the first valid one.
+        return chapters.drop(startIndex + 1).firstOrNull { subsequentChapter ->
+            // Check if the chapter should be skipped based on custom logic (e.g., user settings).
+            val isBlocked = shouldSkipChapter(subsequentChapter)
+            val isSelected = subsequentChapter.selected
+
+            // Log the reason for skipping for clarity
+            if (!isSelected || isBlocked) {
+                LogBuffer.i(LogBuffer.TAG_PLAYBACK, "Also skipping chapter: ${subsequentChapter.title} (Reason: Selected: $isSelected, Blocked: $isBlocked)")
+            }
+
+            // The criteria for a valid chapter
+            isSelected && !isBlocked
         }
     }
 
@@ -2617,6 +2625,6 @@ open class PlaybackManager @Inject constructor(
         OnUpdatePausedPlaybackState("updatePausedPlaybackState"),
         OnUpdateSleepTimerStatus("updateSleepTimerStatus"),
         OnUserSeeking("onUserSeeking"),
-        OnPositionDiscontinuity(\"onPositionDiscontinuity\"), // Optional: Add if needed for debugging state changes
+        OnPositionDiscontinuity("onPositionDiscontinuity")
     }
 }

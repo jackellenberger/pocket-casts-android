@@ -268,7 +268,7 @@ class SimplePlayer(
                 reason: Int
             ) {
                  // Emit the new PlayerEvent for position discontinuity
-                 onPlayerEvent(this@SimplePlayer, PlayerEvent.PositionDiscontinuity(newPosition.positionMs, reason))
+                 onPlayerEvent(this@SimplePlayer, PlayerEvent.PositionDiscontinuity(newPosition.positionMs.toInt(), reason))
                  // Also call the existing SeekComplete handler if the reason was a seek operation,
                  // to maintain compatibility with parts of the code that might rely on it (like CastPlayer sync).
                  // Consider refactoring SeekComplete away later if possible.

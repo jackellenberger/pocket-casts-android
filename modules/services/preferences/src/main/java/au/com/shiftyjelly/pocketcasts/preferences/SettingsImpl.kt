@@ -9,7 +9,6 @@ import androidx.core.content.edit
 import androidx.work.NetworkType
 import au.com.shiftyjelly.pocketcasts.models.to.AutoArchiveAfterPlaying
 import au.com.shiftyjelly.pocketcasts.models.to.AutoArchiveInactive
-import au.com.shiftyjelly.pocketcasts.models.to.ChapterBlocklist
 import au.com.shiftyjelly.pocketcasts.models.to.PlaybackEffects
 import au.com.shiftyjelly.pocketcasts.models.to.PodcastGrouping
 import au.com.shiftyjelly.pocketcasts.models.to.RefreshState

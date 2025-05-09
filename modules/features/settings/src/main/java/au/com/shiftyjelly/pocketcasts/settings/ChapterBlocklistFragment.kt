@@ -21,10 +21,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
-import androidx.navigation.fragment.findNavController
 import au.com.shiftyjelly.pocketcasts.compose.components.FormField
 import au.com.shiftyjelly.pocketcasts.compose.components.FormFieldDefaults
-import au.com.shiftyjelly.pocketcasts.compose.theme.PocketCastsTheme // Assuming a theme exists
 import au.com.shiftyjelly.pocketcasts.localization.R // For string resources
 import au.com.shiftyjelly.pocketcasts.settings.viewmodel.ChapterBlocklistViewModel
 import dagger.hilt.android.AndroidEntryPoint
@@ -173,7 +171,7 @@ fun BlockedTermItem(
         IconButton(onClick = onRemoveClick) {
             Icon(
                 Icons.Filled.Delete,
-                contentDescription = stringResource(id = R.string.blocklist_remove_term_button, term) // Add this string
+                contentDescription = stringResource(id = R.s tring.blocklist_remove_term_button, term) // Add this string
             )
         }
     }

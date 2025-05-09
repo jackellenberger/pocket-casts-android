@@ -576,6 +576,7 @@ enum class AnalyticsEvent(val key: String) {
     SETTINGS_GENERAL_AUTOPLAY_TOGGLED("settings_general_autoplay_toggled"),
     SETTINGS_GENERAL_USE_REAL_TIME_FOR_PLAYBACK_REMAINING_TIME("settings_use_real_time_for_playback_remaining_time"),
 
+
     /* Settings - Headphone controls */
     SETTINGS_HEADPHONE_CONTROLS_SHOWN("settings_headphone_controls_shown"),
     SETTINGS_HEADPHONE_CONTROLS_NEXT_CHANGED("settings_headphone_controls_next_changed"),

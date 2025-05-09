@@ -412,7 +412,7 @@ fun Project.configureSentry() {
         tracingInstrumentation {
             features.set(EnumSet.allOf(InstrumentationFeature::class.java) - InstrumentationFeature.OKHTTP)
         }
-        autoInstallation.enabled = false
+        autoInstallation.enabled = true
         includeDependenciesReport = false
         ignoredBuildTypes = setOf("debug", "debugProd")
     }

@@ -396,7 +396,7 @@ class CastPlayer(val context: Context, override val onPlayerEvent: (Player, Play
             // Crude check for seek-like changes. Cast SDK lacks specific discontinuity reasons.
             // A more robust solution might involve tracking seek requests.
             if (kotlin.math.abs(newPosition - oldPosition) > 1000) { // Arbitrary threshold for seek detection
-                 onPlayerEvent(this@CastPlayer, PlayerEvent.PositionDiscontinuity(newPosition, ExoPlayer.DISCONTINUITY_REASON_SEEK))
+                 onPlayerEvent(this@CastPlayer, PlayerEvent.PositionDiscontinuity(newPosition.toInt(), ExoPlayer.DISCONTINUITY_REASON_SEEK))
                  // Also call SeekComplete for potential compatibility, though it might be redundant.
                  onPlayerEvent(this@CastPlayer, PlayerEvent.SeekComplete(newPosition.toInt()))
             }
