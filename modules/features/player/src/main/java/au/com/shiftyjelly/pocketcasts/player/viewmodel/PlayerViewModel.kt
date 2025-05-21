@@ -316,6 +316,27 @@ class PlayerViewModel @Inject constructor(
     init {
         updateSleepTimer()
         monitorPlaybackPosition()
+        monitorChapterTransitions()
+    }
+
+    private fun monitorChapterTransitions() {
+        playbackStateObservable
+            .map { Triple(it.chapters.getChapter(it.positionMs.milliseconds), it.chapters, it.isPlaying) }
+            .distinctUntilChanged { old, new -> old.first?.title == new.first?.title && old.third == new.third } // Only proceed if chapter title or playing state changed
+            .filter { it.first != null && it.third } // Only proceed if there's a chapter and player is playing
+            .subscribeBy(
+                onNext = { (currentChapter, chapters, _) ->
+                    currentChapter?.let { chapter ->
+                        if (settings.chapterBlocklist.value.contains(chapter.title)) {
+                            if (!chapters.isLastChapter(chapter.startTime)) {
+                                LogBuffer.i(LogBuffer.TAG_PLAYBACK, "Skipping blocklisted chapter: ${chapter.title}")
+                                playbackManager.skipToNextSelectedOrLastChapter()
+                            }
+                        }
+                    }
+                },
+                onError = { Timber.e(it, "Error in monitorChapterTransitions") }
+            ).apply { disposables.add(this) }
     }
 
     private fun monitorPlaybackPosition() {

@@ -125,6 +125,110 @@ class PlayerViewModelTest {
     private val podcastUuid = "podcastUuid"
     private lateinit var viewModel: PlayerViewModel
 
+    // --- Start of Chapter Blocklist Tests ---
+
+    // Helper to create Chapters for blocklist tests
+    private fun createTestChaptersForBlocklist(vararg titles: String): au.com.shiftyjelly.pocketcasts.models.to.Chapters {
+        val chapterList = titles.mapIndexed { index, title ->
+            au.com.shiftyjelly.pocketcasts.models.to.Chapter(
+                title = title,
+                startTime = (index * 10).kotlin.time.Duration.Companion.seconds,
+                endTime = ((index + 1) * 10).kotlin.time.Duration.Companion.seconds,
+                index = index,
+                uiIndex = index,
+                url = "http://example.com/$title".toHttpUrlOrNull(),
+                imagePath = null
+            )
+        }
+        return au.com.shiftyjelly.pocketcasts.models.to.Chapters(chapterList)
+    }
+
+    @Test
+    fun `monitorChapterTransitions skips blocklisted chapter when playing and not last chapter`() = runTest {
+        val blocklistedTitle = "Sponsor Read"
+        val chapterBlocklistFlow = MutableStateFlow(setOf(blocklistedTitle))
+        whenever(settings.chapterBlocklist).thenReturn(UserSetting.Testing.Flow(chapterBlocklistFlow))
+
+        initViewModel() // Re-initialize viewModel to use the new settings mock
+
+        val chapters = createTestChaptersForBlocklist("Intro", blocklistedTitle, "Main Content")
+        val playbackStateRelay = playbackManager.playbackStateRelay as BehaviorRelay<PlaybackState>
+
+
+        // 1. Start playing "Intro" - no skip
+        playbackStateRelay.accept(PlaybackState(chapters = chapters, positionMs = 5000, isPlaying = true, durationMs = 30000))
+        coroutineRule.testDispatcher.scheduler.advanceUntilIdle()
+        verify(playbackManager, never()).skipToNextSelectedOrLastChapter()
+
+        // 2. Transition to blocklisted "Sponsor Read" - should skip
+        playbackStateRelay.accept(PlaybackState(chapters = chapters, positionMs = 15000, isPlaying = true, durationMs = 30000))
+        coroutineRule.testDispatcher.scheduler.advanceUntilIdle()
+        verify(playbackManager, times(1)).skipToNextSelectedOrLastChapter()
+    }
+
+    @Test
+    fun `monitorChapterTransitions does NOT skip chapter if title not in blocklist`() = runTest {
+        val chapterBlocklistFlow = MutableStateFlow(setOf("Another Ad")) // Blocklist does not contain current chapter
+        whenever(settings.chapterBlocklist).thenReturn(UserSetting.Testing.Flow(chapterBlocklistFlow))
+        initViewModel()
+
+        val chapters = createTestChaptersForBlocklist("Intro", "Not Blocklisted", "Main Content")
+        val playbackStateRelay = playbackManager.playbackStateRelay as BehaviorRelay<PlaybackState>
+
+        playbackStateRelay.accept(PlaybackState(chapters = chapters, positionMs = 5000, isPlaying = true, durationMs = 30000))
+        coroutineRule.testDispatcher.scheduler.advanceUntilIdle()
+        verify(playbackManager, never()).skipToNextSelectedOrLastChapter()
+
+        playbackStateRelay.accept(PlaybackState(chapters = chapters, positionMs = 15000, isPlaying = true, durationMs = 30000)) // Transition to "Not Blocklisted"
+        coroutineRule.testDispatcher.scheduler.advanceUntilIdle()
+        verify(playbackManager, never()).skipToNextSelectedOrLastChapter()
+    }
+
+    @Test
+    fun `monitorChapterTransitions does NOT skip blocklisted chapter if it IS the last chapter`() = runTest {
+        val blocklistedTitle = "Outro Music"
+        val chapterBlocklistFlow = MutableStateFlow(setOf(blocklistedTitle))
+        whenever(settings.chapterBlocklist).thenReturn(UserSetting.Testing.Flow(chapterBlocklistFlow))
+        initViewModel()
+
+        val chapters = createTestChaptersForBlocklist("Main Content", blocklistedTitle)
+        val playbackStateRelay = playbackManager.playbackStateRelay as BehaviorRelay<PlaybackState>
+
+        playbackStateRelay.accept(PlaybackState(chapters = chapters, positionMs = 5000, isPlaying = true, durationMs = 20000))
+        coroutineRule.testDispatcher.scheduler.advanceUntilIdle()
+        verify(playbackManager, never()).skipToNextSelectedOrLastChapter()
+
+        playbackStateRelay.accept(PlaybackState(chapters = chapters, positionMs = 15000, isPlaying = true, durationMs = 20000)) // Transition to "Outro Music" (last chapter)
+        coroutineRule.testDispatcher.scheduler.advanceUntilIdle()
+        verify(playbackManager, never()).skipToNextSelectedOrLastChapter()
+    }
+
+    @Test
+    fun `monitorChapterTransitions does NOT skip blocklisted chapter if player is NOT playing`() = runTest {
+        val blocklistedTitle = "Sponsor Read"
+        val chapterBlocklistFlow = MutableStateFlow(setOf(blocklistedTitle))
+        whenever(settings.chapterBlocklist).thenReturn(UserSetting.Testing.Flow(chapterBlocklistFlow))
+        initViewModel()
+
+        val chapters = createTestChaptersForBlocklist("Intro", blocklistedTitle, "Main Content")
+        val playbackStateRelay = playbackManager.playbackStateRelay as BehaviorRelay<PlaybackState>
+
+        playbackStateRelay.accept(PlaybackState(chapters = chapters, positionMs = 5000, isPlaying = true, durationMs = 30000)) // Start playing "Intro"
+        coroutineRule.testDispatcher.scheduler.advanceUntilIdle()
+
+        // Transition to blocklisted chapter "Sponsor Read", but player is paused
+        playbackStateRelay.accept(PlaybackState(chapters = chapters, positionMs = 15000, isPlaying = false, durationMs = 30000))
+        coroutineRule.testDispatcher.scheduler.advanceUntilIdle()
+        verify(playbackManager, never()).skipToNextSelectedOrLastChapter()
+
+        // Resume playing on the blocklisted chapter, should skip now
+        playbackStateRelay.accept(PlaybackState(chapters = chapters, positionMs = 15000, isPlaying = true, durationMs = 30000))
+        coroutineRule.testDispatcher.scheduler.advanceUntilIdle()
+        verify(playbackManager, times(1)).skipToNextSelectedOrLastChapter()
+    }
+
+    // --- End of Chapter Blocklist Tests ---
+
     @Test
     fun `given episode playing, when play pause button clicked, then episode is paused`() {
         whenever(playbackManager.isPlaying()).thenReturn(true)
@@ -250,8 +354,17 @@ class PlayerViewModelTest {
     private fun initViewModel(
         currentEpisode: BaseEpisode = podcastEpisode,
     ) {
+        // Ensure chapterBlocklist is mocked before initViewModel is called if not already done by the test
+        if (settings.chapterBlocklist == null) { // Basic check, might need more robust if settings mock is complex
+            val chapterBlocklistFlow = MutableStateFlow(emptySet<String>())
+            whenever(settings.chapterBlocklist).thenReturn(UserSetting.Testing.Flow(chapterBlocklistFlow))
+        }
+
         whenever(sleepTimer.state).thenReturn(SleepTimerState())
-        whenever(playbackManager.playbackStateRelay).thenReturn(BehaviorRelay.create<PlaybackState>().toSerialized())
+        // Use a fresh BehaviorRelay for playbackStateRelay in each init if tests manipulate it directly
+        // This helps isolate tests that rely on specific sequences of playback states.
+        val localPlaybackStateRelay = BehaviorRelay.create<PlaybackState>().toSerialized()
+        whenever(playbackManager.playbackStateRelay).thenReturn(localPlaybackStateRelay)
         whenever(upNextQueue.currentEpisode).thenReturn(currentEpisode)
         whenever(playbackManager.upNextQueue).thenReturn(upNextQueue)
         whenever(upNextQueue.getChangesObservableWithLiveCurrentEpisode(episodeManager, podcastManager)).thenReturn(Observable.just(State.Empty))
@@ -277,6 +390,11 @@ class PlayerViewModelTest {
         val useRealTimeForPlaybackRemainingTimeMock = mock<UserSetting<Boolean>>()
         whenever(useRealTimeForPlaybackRemainingTimeMock.flow).thenReturn(MutableStateFlow(false))
         whenever(settings.useRealTimeForPlaybackRemaingTime).thenReturn(useRealTimeForPlaybackRemainingTimeMock)
+        // Ensure a default mock for chapterBlocklist if not specifically set by a test
+        if (settings.chapterBlocklist == null) {
+            whenever(settings.chapterBlocklist).thenReturn(UserSetting.Testing.Flow(MutableStateFlow(emptySet())))
+        }
+
 
         viewModel = PlayerViewModel(
             playbackManager = playbackManager,

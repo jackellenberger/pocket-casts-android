@@ -1634,4 +1634,10 @@ class SettingsImpl @Inject constructor(
         defaultValue = false,
         sharedPrefs = sharedPreferences,
     )
+
+    override val chapterBlocklist: UserSetting<Set<String>> = UserSetting.PrefFromStringSet(
+        sharedPrefKey = "user_chapter_blocklist",
+        defaultValue = emptySet(),
+        sharedPrefs = sharedPreferences,
+    )
 }
