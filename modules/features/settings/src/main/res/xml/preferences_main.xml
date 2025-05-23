@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Other main settings would go here -->
+
+    <Preference
+        android:title="Playback Settings"
+        android:summary="Manage playback behavior, chapter skipping, etc."
+        android:fragment="au.com.shiftyjelly.pocketcasts.feature.settings.playback.PlaybackSettingsFragment" />
+
+</PreferenceScreen>

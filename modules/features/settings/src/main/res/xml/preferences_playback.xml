@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <Preference
+        android:key="pref_chapter_blocklist_settings"
+        android:title="Chapter Blocklist"
+        android:summary="Manage chapter titles to automatically skip" />
+
+</PreferenceScreen>
